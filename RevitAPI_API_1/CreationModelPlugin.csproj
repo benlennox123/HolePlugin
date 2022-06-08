@@ -7,8 +7,8 @@
     <ProjectGuid>{0C39D6D5-AF3D-448D-ACE9-AC942C14FCA8}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>CopyGroupPlugin</RootNamespace>
-    <AssemblyName>CopyGroupPlugin</AssemblyName>
+    <RootNamespace>CreationModelPlugin</RootNamespace>
+    <AssemblyName>CreationModelPlugin</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>

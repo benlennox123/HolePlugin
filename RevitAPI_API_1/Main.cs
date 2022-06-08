@@ -9,91 +9,73 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CopyGroupPlugin
+namespace CreationModelPlugin
 {
     [TransactionAttribute(TransactionMode.Manual)]
     public class CopyGroup : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
-            try
-            {
-                UIDocument uiDoc = commandData.Application.ActiveUIDocument;
-                Document doc = uiDoc.Document;
+            Document doc = commandData.Application.ActiveUIDocument.Document;
 
-                GroupPickFilter groupPickFilter = new GroupPickFilter();
-                Reference reference = uiDoc.Selection.PickObject(ObjectType.Element, groupPickFilter, "Выберите группу объектов");
-                Element element = doc.GetElement(reference);
-                Group group = element as Group;
-                XYZ groupCenter = GetElementCenter(group);
-                Room room = GetRoomByPoint(doc, groupCenter);
-                XYZ roomCenter = GetElementCenter(room);
-                XYZ offset = roomCenter - groupCenter;
+            List<Level> listLevel = new List<Level>();
+            listLevel = GetLevels(doc);
 
-                XYZ point = uiDoc.Selection.PickPoint("Выберите точку");
-                Room roomIn = GetRoomByPoint(doc, point);
-                XYZ roomInCenter = GetElementCenter(roomIn);
-                XYZ pointIn = roomInCenter - offset;
+            Level level1 = listLevel
+                .Where(x => x.Name.Equals("Уровень 1"))
+                .FirstOrDefault();
 
-                Transaction transaction = new Transaction(doc);
-                transaction.Start("Копирование группы объектов");
-                doc.Create.PlaceGroup(pointIn, group.GroupType);
-                transaction.Commit();
-            }
-            catch(Autodesk.Revit.Exceptions.OperationCanceledException)
-            {
-                return Result.Cancelled;
-            }
-            catch(Exception ex)
-            {
-                message = ex.Message;
-                return Result.Failed;
-            }
+            Level level2 = listLevel
+                .Where(x => x.Name.Equals("Уровень 2"))
+                .FirstOrDefault();
+
+            double width = 10000;
+            double depth = 5000;
+
+            Transaction transaction = new Transaction(doc, "Построение стен");
+            transaction.Start();
+
+            CreateWall(doc, width, depth, level1, level2);
+
+            transaction.Commit();
 
             return Result.Succeeded;
         }
 
-        public XYZ GetElementCenter(Element element)
+        public static List<Level> GetLevels(Document doc)
         {
-            BoundingBoxXYZ bounding = element.get_BoundingBox(null);
-            return (bounding.Max + bounding.Min) / 2;
+            List<Level> listLevel = new FilteredElementCollector(doc)
+                .OfClass(typeof(Level))
+                .OfType<Level>()
+                .ToList();
+
+            return listLevel;
         }
 
-        public Room GetRoomByPoint(Document doc, XYZ point)
+        public static void CreateWall(Document doc, double width, double depth, Level level1, Level level2)
         {
-            FilteredElementCollector collector = new FilteredElementCollector(doc);
-            collector.OfCategory(BuiltInCategory.OST_Rooms);
-            foreach (Element e in collector)
+            double W = UnitUtils.ConvertToInternalUnits(width, UnitTypeId.Millimeters);
+            double D = UnitUtils.ConvertToInternalUnits(depth, UnitTypeId.Millimeters);
+            double dx = W / 2;
+            double dy = D / 2;
+
+            List<XYZ> points = new List<XYZ>();
+            points.Add(new XYZ(-dx, -dy, 0));
+            points.Add(new XYZ(dx, -dy, 0));
+            points.Add(new XYZ(dx, dy, 0));
+            points.Add(new XYZ(-dx, dy, 0));
+            points.Add(new XYZ(-dx, -dy, 0));
+
+            List<Wall> walls = new List<Wall>();
+
+            for (int i = 0; i < 4; i++)
             {
-                Room room = e as Room;
-                if(room!=null)
-                {
-                    if(room.IsPointInRoom(point))
-                    {
-                        return room;
-                    }
-                }
+                Line line = Line.CreateBound(points[i], points[i + 1]);
+                Wall wall = Wall.Create(doc, line, level1.Id, false);
+                walls.Add(wall);
+                wall.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE).Set(level2.Id);
             }
-            return null;
         }
-
-
-
-    }
-
-    public class GroupPickFilter : ISelectionFilter
-    {
-        public bool AllowElement(Element elem)
-        {
-            if (elem.Category.Id.IntegerValue == (int)BuiltInCategory.OST_IOSModelGroups)
-                return true;
-            else
-                return false;
-        }
-
-        public bool AllowReference(Reference reference, XYZ position)
-        {
-            return false;
-        }
+ 
     }
 }
