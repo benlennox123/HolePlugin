@@ -37,6 +37,7 @@ namespace CreationModelPlugin
 
             CreateWall(doc, width, depth, level1, level2);
 
+
             transaction.Commit();
 
             return Result.Succeeded;
@@ -52,7 +53,7 @@ namespace CreationModelPlugin
             return listLevel;
         }
 
-        public static void CreateWall(Document doc, double width, double depth, Level level1, Level level2)
+        public static List<Wall> CreateWall(Document doc, double width, double depth, Level level1, Level level2)
         {
             double W = UnitUtils.ConvertToInternalUnits(width, UnitTypeId.Millimeters);
             double D = UnitUtils.ConvertToInternalUnits(depth, UnitTypeId.Millimeters);
@@ -75,7 +76,9 @@ namespace CreationModelPlugin
                 walls.Add(wall);
                 wall.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE).Set(level2.Id);
             }
+
+            return walls;
         }
- 
+
     }
 }
