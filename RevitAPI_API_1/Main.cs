@@ -1,4 +1,5 @@
-﻿using Autodesk.Revit.Attributes;
+﻿using Autodesk.Revit.ApplicationServices;
+using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.DB.Structure;
@@ -33,6 +34,8 @@ namespace CreationModelPlugin
             double width = 10000;
             double depth = 5000;
 
+            double roofHeight = 1500;
+
             List<Wall> walls = new List<Wall>();
 
             Transaction transaction = new Transaction(doc, "Построение стен");
@@ -46,10 +49,139 @@ namespace CreationModelPlugin
             AddWindow(doc, level1, walls[2]);
             AddWindow(doc, level1, walls[3]);
 
+            AddRoof(doc, level2, walls, roofHeight);
+
             transaction.Commit();
 
             return Result.Succeeded;
         }
+
+        private void AddRoof(Document doc, Level level2, List<Wall> walls, double roofHeight)
+        {
+            RoofType roofType = new FilteredElementCollector(doc)
+                .OfClass(typeof(RoofType))
+                .OfType<RoofType>()
+                .Where(x => x.Name.Equals("Типовой - 400мм"))
+                .Where(x => x.FamilyName.Equals("Базовая крыша"))
+                .FirstOrDefault();
+
+            double wallWidth = walls[0].Width;
+            double dt = wallWidth/2;
+
+            CurveArray curveArray = new CurveArray();
+
+            LocationCurve curve = walls[3].Location as LocationCurve;
+            XYZ p1 = curve.Curve.GetEndPoint(0);
+            XYZ p2 = curve.Curve.GetEndPoint(1);
+
+            double cat = walls[3].get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH).AsDouble()/2 + dt;
+
+            double tg = UnitUtils.ConvertToInternalUnits(roofHeight, UnitTypeId.Millimeters) / cat;
+
+            double rt = roofType.get_Parameter(BuiltInParameter.ROOF_ATTR_DEFAULT_THICKNESS_PARAM).AsDouble();
+
+            double swing = Math.Sqrt(Math.Pow(rt, 2) + Math.Pow((rt * tg), 2));
+
+            double wallHeight = walls[0].get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble();
+
+            //вариант 1 - крыша вровень
+            double roofTop = walls[0].get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble() + swing
+                + UnitUtils.ConvertToInternalUnits(roofHeight, UnitTypeId.Millimeters);
+
+            List<XYZ> points = new List<XYZ>();
+            points.Add(new XYZ(-dt, -dt, wallHeight + swing));
+            points.Add(new XYZ(dt, -dt, wallHeight + swing));
+            points.Add(new XYZ(dt, dt, wallHeight + swing));
+            points.Add(new XYZ(-dt, dt, wallHeight + swing));
+            points.Add(new XYZ(-dt, -dt, wallHeight + swing));
+
+            XYZ zTop = new XYZ(
+                                (p1 + points[3]).X,
+                                (((p1 + points[3]) + (p2 + points[4])) / 2).Y,
+                                roofTop);
+
+            //вариант 2 - крыша выпирает
+            //double roofTop = walls[0].get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble() + rt
+            //    + UnitUtils.ConvertToInternalUnits(roofHeight, UnitTypeId.Millimeters);
+
+            //List<XYZ> points = new List<XYZ>();
+            //points.Add(new XYZ(-wallWidth, -wallWidth, wallHeight + rt));
+            //points.Add(new XYZ(wallWidth, -wallWidth, wallHeight + rt));
+            //points.Add(new XYZ(wallWidth, wallWidth, wallHeight + rt));
+            //points.Add(new XYZ(-wallWidth, wallWidth, wallHeight + rt));
+            //points.Add(new XYZ(-wallWidth, -wallWidth, wallHeight + rt));
+
+            //XYZ zTop = new XYZ(
+            //                    (p1 + points[3]).X,
+            //                    (((p1 + points[3]) + (p2 + points[4])) / 2).Y,
+            //                    roofTop);
+            ///////////
+
+            curveArray.Append(Line.CreateBound(p1 + points[3], zTop));
+            curveArray.Append(Line.CreateBound(zTop, p2 + points[4]));
+
+            LocationCurve length = walls[0].Location as LocationCurve;
+            XYZ pl1 = length.Curve.GetEndPoint(0);
+            XYZ pl2 = length.Curve.GetEndPoint(1);
+
+            double start = (pl1 + points[0]).X;
+            double end = (pl2 + points[1]).X;
+
+            ReferencePlane plane = doc.Create.NewReferencePlane(new XYZ(0, 0, 0), new XYZ(0, 0, 20), new XYZ(0, 20, 0), doc.ActiveView);
+            doc.Create.NewExtrusionRoof(curveArray, plane, level2, roofType, start, end);
+
+        }
+
+        //private void AddRoof(Document doc, Level level2, List<Wall> walls)
+        //{
+        //    RoofType roofType = new FilteredElementCollector(doc)
+        //        .OfClass(typeof(RoofType))
+        //        .OfType<RoofType>()
+        //        .Where(x => x.Name.Equals("Типовой - 400мм"))
+        //        .Where(x => x.FamilyName.Equals("Базовая крыша"))
+        //        .FirstOrDefault();
+
+        //    double wallWidth = walls[0].Width;
+        //    double dt = wallWidth / 2;
+
+        //    List<XYZ> points = new List<XYZ>();
+        //    points.Add(new XYZ(-dt, -dt, 0));
+        //    points.Add(new XYZ(dt, -dt, 0));
+        //    points.Add(new XYZ(dt, dt, 0));
+        //    points.Add(new XYZ(-dt, dt, 0));
+        //    points.Add(new XYZ(-dt, -dt, 0));
+
+        //    Application application = doc.Application;
+
+        //    CurveArray footprint = application.Create.NewCurveArray();
+
+        //    for (int i = 0; i < 4; i++)
+        //    {
+        //        LocationCurve curve = walls[i].Location as LocationCurve;
+        //        XYZ p1 = curve.Curve.GetEndPoint(0);
+        //        XYZ p2 = curve.Curve.GetEndPoint(1);
+        //        Line line = Line.CreateBound(p1 + points[i], p2 + points[i + 1]);
+        //        footprint.Append(line);
+        //    }
+
+        //    ModelCurveArray footPrintToModelCurveMapping = new ModelCurveArray();
+        //    FootPrintRoof footPrintRoof = doc.Create.NewFootPrintRoof(footprint, level2, roofType, out footPrintToModelCurveMapping);
+
+        //    //ModelCurveArrayIterator iterator = footPrintToModelCurveMapping.ForwardIterator();
+        //    //iterator.Reset();
+        //    //while (iterator.MoveNext())
+        //    //{
+        //    //    ModelCurve modelCurve = iterator.Current as ModelCurve;
+        //    //    footPrintRoof.set_DefinesSlope(modelCurve, true);
+        //    //    footPrintRoof.set_SlopeAngle(modelCurve, 0.5);
+        //    //}
+
+        //    foreach (ModelCurve m in footPrintToModelCurveMapping)
+        //    {
+        //        footPrintRoof.set_DefinesSlope(m, true);
+        //        footPrintRoof.set_SlopeAngle(m, 0.5);
+        //    }
+        //}
 
         private void AddWindow(Document doc, Level level1, Wall wall)
         {
@@ -71,7 +203,7 @@ namespace CreationModelPlugin
             if (!windowType.IsActive)
                 windowType.Activate();
 
-            FamilyInstance window =  doc.Create.NewFamilyInstance(point, windowType, wall, level1, StructuralType.NonStructural);
+            FamilyInstance window = doc.Create.NewFamilyInstance(point, windowType, wall, level1, StructuralType.NonStructural);
             window.get_Parameter(BuiltInParameter.INSTANCE_SILL_HEIGHT_PARAM).Set(height);
 
         }
